@@ -152,3 +152,17 @@ What's more, it will always be free and open sourced!
 > For now, you can only download the compressed application file of **Melodic Stamp** from the [Releases](https://github.com/Cement-Labs/MelodicStamp/releases) page.
 
 [^open_as_unidentified]: [`↗ Open a Mac app from an unidentified developer`](https://support.apple.com/guide/mac-help/mh40616/mac)
+
+## QA And Release Readiness
+
+Release-candidate validation is tracked in:
+
+- [`QA_MATRIX.md`](QA_MATRIX.md) for manual product QA coverage.
+- [`TEST_ASSETS.md`](TEST_ASSETS.md) for local audio fixture requirements.
+- [`RELEASE_CHECKLIST.md`](RELEASE_CHECKLIST.md) for build, packaging, and go/no-go checks.
+
+Run the local launch smoke before handing a build to testers:
+
+```sh
+Scripts/qa_smoke.sh
+```

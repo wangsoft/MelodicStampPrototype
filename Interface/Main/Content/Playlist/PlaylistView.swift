@@ -48,7 +48,7 @@ struct PlaylistView: View {
                             .padding(.horizontal)
                     }
 
-                    ExcerptView(tab: SidebarContentTab.playlist)
+                    PlaylistEmptyStateView()
                         .expandContextMenuActivationArea()
                         .contextMenu {
                             TracksContextMenu(tracks: [])
@@ -461,6 +461,51 @@ struct PlaylistView: View {
             await playlist.remove(urls)
         }
         return true
+    }
+}
+
+private struct PlaylistEmptyStateView: View {
+    @Environment(FileManagerModel.self) private var fileManager
+
+    var body: some View {
+        VStack(spacing: 18) {
+            EmptyMusicNoteView(systemSymbol: .musicNoteList)
+                .frame(height: 64)
+
+            VStack(spacing: 6) {
+                Text("No Tracks")
+                    .font(.title3)
+                    .fontWeight(.medium)
+
+                Text("Open audio files or add a folder to start a playlist.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    fileManager.emitOpen(style: .inCurrentPlaylist)
+                } label: {
+                    Label("Open Files", systemImage: "play.fill")
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button {
+                    fileManager.emitAdd(style: .toCurrentPlaylist)
+                } label: {
+                    Label("Add Folder", systemImage: "folder.badge.plus")
+                }
+                .buttonStyle(.bordered)
+            }
+
+            Text("Drag songs or folders here.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+        }
+        .padding(24)
+        .frame(maxWidth: 420)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
