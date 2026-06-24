@@ -7,7 +7,7 @@
 
 import Foundation
 import SFSafeSymbols
-import SwiftUICore
+import SwiftUI
 
 enum SettingsTab: Hashable, Equatable, Identifiable, CaseIterable {
     case appearance

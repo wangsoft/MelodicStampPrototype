@@ -23,6 +23,7 @@ class SFBAudioEnginePlayer: NSObject, Player {
 
     private var player: AudioPlayer
     private var mutedVolume: CGFloat?
+    private var playbackAccesses: [SecurityScopedAccessToken] = []
 
     var isPlaying: Bool { isRunning && player.isPlaying }
     var isRunning: Bool { player.engineIsRunning }
@@ -49,21 +50,27 @@ class SFBAudioEnginePlayer: NSObject, Player {
 
     func play(_ track: Track) {
         do {
-            if let decoder = try Self.decoder(for: track) {
+            releasePlaybackAccesses()
+            if let (decoder, accessToken) = try Self.decoder(for: track) {
+                retainPlaybackAccess(accessToken)
                 try player.play(decoder)
             }
         } catch {
+            releasePlaybackAccesses()
             logger.error("\(error)")
+            delegate?.player(self, encounteredError: error)
         }
     }
 
     func enqueue(_ track: Track) {
         do {
-            if let decoder = try Self.decoder(for: track) {
+            if let (decoder, accessToken) = try Self.decoder(for: track) {
+                retainPlaybackAccess(accessToken)
                 try player.enqueue(decoder)
             }
         } catch {
             logger.error("\(error)")
+            delegate?.player(self, encounteredError: error)
         }
     }
 
@@ -72,6 +79,7 @@ class SFBAudioEnginePlayer: NSObject, Player {
             try player.play()
         } catch {
             logger.error("\(error)")
+            delegate?.player(self, encounteredError: error)
         }
     }
 
@@ -81,6 +89,7 @@ class SFBAudioEnginePlayer: NSObject, Player {
 
     func stop() {
         player.stop()
+        releasePlaybackAccesses()
     }
 
     func mute() {
@@ -166,9 +175,32 @@ class SFBAudioEnginePlayer: NSObject, Player {
 }
 
 extension SFBAudioEnginePlayer {
-    static func decoder(for track: Track, enablesDoP: Bool = false) throws -> PCMDecoding? {
-        let url = track.url
+    private func retainPlaybackAccess(_ accessToken: SecurityScopedAccessToken?) {
+        guard let accessToken else { return }
+        playbackAccesses.append(accessToken)
+    }
 
+    private func releasePlaybackAccesses() {
+        playbackAccesses.removeAll()
+    }
+
+    static func decoder(for track: Track, enablesDoP: Bool = false) throws -> (PCMDecoding, SecurityScopedAccessToken?)? {
+        let url = track.url
+        guard let accessToken = SecurityScopedAccessToken(url: url) else {
+            guard url.isReachable else { return nil }
+            return try decoder(for: url, enablesDoP: enablesDoP).map { ($0, nil) }
+        }
+
+        do {
+            guard let decoder = try decoder(for: url, enablesDoP: enablesDoP) else { return nil }
+            return (decoder, accessToken)
+        } catch {
+            accessToken.stopAccessing()
+            throw error
+        }
+    }
+
+    private static func decoder(for url: URL, enablesDoP: Bool) throws -> PCMDecoding? {
         let pathExtension = url.pathExtension.lowercased()
         if AudioDecoder.handlesPaths(withExtension: pathExtension) {
             return try AudioDecoder(url: url)
@@ -183,6 +215,7 @@ extension SFBAudioEnginePlayer {
 
 extension SFBAudioEnginePlayer: AudioPlayer.Delegate {
     func audioPlayerEndOfAudio(_ audioPlayer: AudioPlayer) {
+        releasePlaybackAccesses()
         delegate?.playerDidFinishPlaying(self)
 
         if let delegate = delegate as? AudioPlayer.Delegate {
@@ -203,6 +236,7 @@ extension SFBAudioEnginePlayer: AudioPlayer.Delegate {
     }
 
     func audioPlayer(_ audioPlayer: AudioPlayer, encounteredError error: any Error) {
+        releasePlaybackAccesses()
         if let delegate = delegate as? AudioPlayer.Delegate {
             delegate.audioPlayer?(audioPlayer, encounteredError: error)
         }
@@ -233,6 +267,7 @@ extension SFBAudioEnginePlayer: AudioPlayer.Delegate {
     }
 
     func audioPlayer(_ audioPlayer: AudioPlayer, decoderCanceled decoder: any PCMDecoding, framesRendered: AVAudioFramePosition) {
+        releasePlaybackAccesses()
         if let delegate = delegate as? AudioPlayer.Delegate {
             delegate.audioPlayer?(audioPlayer, decoderCanceled: decoder, framesRendered: framesRendered)
         }

@@ -33,6 +33,8 @@ struct MainView: View {
                     .animation(nil, value: playlist.selectedTracks) // Remove strange transitions when selection changes
             }
             .luminareMinHeight(38)
+            .metadataSaveErrorAlert(for: metadataEditor)
+            .metadataUpdateErrorAlert(for: metadataEditor)
     }
 
     @ViewBuilder private func content() -> some View {

@@ -39,12 +39,9 @@ struct PlaylistMetadataView: View {
             ) { result in
                 switch result {
                 case let .success(url):
-                    guard url.startAccessingSecurityScopedResource() else { break }
-                    defer { url.stopAccessingSecurityScopedResource() }
-
-                    guard let image = NSImage(contentsOf: url) else { break }
+                    guard let image = url.compactSecurityScopedAccess({ NSImage(contentsOf: $0) }) else { break }
                     playlist.segments.artwork.tiffRepresentation = image.tiffRepresentation
-                    try? playlist.write(segments: [.artwork])
+                    playlist.save(segments: [.artwork])
                 case .failure:
                     break
                 }
@@ -64,7 +61,7 @@ struct PlaylistMetadataView: View {
                 }
                 .buttonStyle(.alive)
                 .sheet(isPresented: $isDescriptionSheetPresented) {
-                    try? playlist.write(segments: [.info])
+                    playlist.save(segments: [.info])
                 } content: {
                     // In order to make safe area work, we need a wrapper
                     ScrollView {
@@ -157,7 +154,7 @@ struct PlaylistMetadataView: View {
         }
         .onChange(of: isTitleFocused) { _, newValue in
             guard !newValue else { return }
-            try? playlist.write(segments: [.info])
+            playlist.save(segments: [.info])
         }
     }
 
@@ -176,7 +173,7 @@ struct PlaylistMetadataView: View {
     @ViewBuilder private func artworkContextMenu() -> some View {
         Button("Remove") {
             playlist.segments.artwork.tiffRepresentation = nil
-            try? playlist.write(segments: [.artwork])
+            playlist.save(segments: [.artwork])
         }
     }
 
@@ -187,7 +184,7 @@ struct PlaylistMetadataView: View {
 
         Button("Clear") {
             playlist.segments.info.description = ""
-            try? playlist.write(segments: [.info])
+            playlist.save(segments: [.info])
         }
     }
 

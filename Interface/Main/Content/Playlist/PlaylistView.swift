@@ -80,22 +80,31 @@ struct PlaylistView: View {
 
                     // MARK: Tracks
 
-                    ForEach(playlist.tracks) { track in
+                    ForEach(playlist.filteredTracks) { track in
                         trackView(for: track)
                             .id(track)
                             .draggable(track) {
                                 TrackPreview(track: track)
                             }
+                            .moveDisabled(playlist.isFiltering)
                     }
                     .onMove { indices, destination in
+                        guard !playlist.isFiltering else { return }
                         withAnimation {
                             playlist.move(fromOffsets: indices, toOffset: destination)
                         }
                     }
                     .transition(.slide)
+
+                    if playlist.isFiltering, playlist.isFilteredTracksEmpty {
+                        noSearchResultsView()
+                            .listRowSeparator(.hidden)
+                            .selectionDisabled()
+                    }
                 }
                 .scrollClipDisabled()
                 .scrollContentBackground(.hidden)
+                .searchable(text: $playlist.searchText, prompt: "Search Playlist")
                 .contextMenu(forSelectionType: Track.self) { tracks in
                     TracksContextMenu(tracks: tracks)
                 } primaryAction: { tracks in
@@ -140,6 +149,7 @@ struct PlaylistView: View {
         }
         .animation(animationFast, value: playlist)
         .animation(animationFast, value: playlist.selectedTracks)
+        .animation(animationFast, value: playlist.searchText)
         .animation(.default, value: playlist.isLoading)
 
         // MARK: Keyboard Handlers
@@ -188,9 +198,18 @@ struct PlaylistView: View {
             )
         }
 
+        // Handles [j / l] -> adjust progress
+        .onKeyPress(keys: ["j", "l"], phases: .all) { key in
+            let sign: FloatingPointSign = key.characters == "j" ? .minus : .plus
+
+            return keyboardControl.handleProgressAdjustment(
+                phase: key.phase, modifiers: key.modifiers, sign: sign
+            )
+        }
+
         // Handles [↑ / ↓] -> adjust volume
-        .onKeyPress(keys: [.leftArrow, .rightArrow], phases: .all) { key in
-            let sign: FloatingPointSign = key.key == .leftArrow ? .minus : .plus
+        .onKeyPress(keys: [.upArrow, .downArrow], phases: .all) { key in
+            let sign: FloatingPointSign = key.key == .downArrow ? .minus : .plus
 
             return keyboardControl.handleVolumeAdjustment(
                 phase: key.phase, modifiers: key.modifiers, sign: sign
@@ -290,11 +309,21 @@ struct PlaylistView: View {
 
     @ViewBuilder private func trailingActions() -> some View {
         HStack(spacing: 2) {
+            if playlist.isFiltering {
+                Button {
+                    playlist.searchText = ""
+                } label: {
+                    Image(systemSymbol: .magnifyingglassCircleFill)
+                }
+                .help("Clear Search")
+                .aspectRatio(6 / 5, contentMode: .fit)
+            }
+
             // MARK: Playback Mode
 
             Button {
                 let hasShift = NSEvent.modifierFlags.contains(.shift)
-                playlist.playbackMode = playlist.playbackMode.cycle(negate: hasShift)
+                playlist.cyclePlaybackMode(negate: hasShift)
             } label: {
                 PlaybackModeView(mode: playlist.playbackMode)
                     .padding()
@@ -304,10 +333,9 @@ struct PlaylistView: View {
             // MARK: Playback Looping
 
             Button {
-                playlist.playbackLooping.toggle()
+                playlist.cyclePlaybackRepeatMode()
             } label: {
-                Image(systemSymbol: .repeat1)
-                    .aliveHighlight(playlist.playbackLooping)
+                PlaybackRepeatView(mode: playlist.playbackRepeatMode)
                     .luminareAnimation(.instant)
             }
             .aspectRatio(6 / 5, contentMode: .fit)
@@ -388,6 +416,20 @@ struct PlaylistView: View {
                 .tint(.accent)
             }
         }
+    }
+
+    @ViewBuilder private func noSearchResultsView() -> some View {
+        VStack(spacing: 8) {
+            Image(systemSymbol: .magnifyingglass)
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
+
+            Text("No Matching Tracks")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
     }
 
     // MARK: Loading View

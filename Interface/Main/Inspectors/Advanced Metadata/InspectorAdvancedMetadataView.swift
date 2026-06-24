@@ -193,7 +193,7 @@ struct InspectorAdvancedMetadataView: View {
 
         LabeledTextField(
             "Release ID",
-            entries: metadataEditor[extracting: \.musicBrainzRecordingID],
+            entries: metadataEditor[extracting: \.musicBrainzReleaseID],
             format: .uuid
         )
     }

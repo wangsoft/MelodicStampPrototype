@@ -10,6 +10,9 @@ import SwiftUI
 @Observable class MetadataEditorModel: MetadataEditorProtocol {
     private weak var playlist: PlaylistModel?
 
+    var saveError: MetadataSaveError?
+    var updateError: MetadataUpdateError?
+
     init(playlist: PlaylistModel) {
         self.playlist = playlist
     }

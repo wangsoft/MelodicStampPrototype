@@ -32,10 +32,46 @@ struct MetadataEditingState: OptionSet {
     }
 }
 
-@MainActor protocol MetadataEditorProtocol: Modifiable {
+struct MetadataSaveError: Identifiable, Equatable {
+    let id = UUID()
+    var failedCount: Int
+    var fileNames: [String]
+
+    init(failedURLs: [URL]) {
+        self.failedCount = failedURLs.count
+        self.fileNames = failedURLs
+            .map(\.lastPathComponent)
+            .sorted()
+    }
+
+    static func == (lhs: MetadataSaveError, rhs: MetadataSaveError) -> Bool {
+        lhs.failedCount == rhs.failedCount && lhs.fileNames == rhs.fileNames
+    }
+}
+
+struct MetadataUpdateError: Identifiable, Equatable {
+    let id = UUID()
+    var failedCount: Int
+    var fileNames: [String]
+
+    init(failedURLs: [URL]) {
+        self.failedCount = failedURLs.count
+        self.fileNames = failedURLs
+            .map(\.lastPathComponent)
+            .sorted()
+    }
+
+    static func == (lhs: MetadataUpdateError, rhs: MetadataUpdateError) -> Bool {
+        lhs.failedCount == rhs.failedCount && lhs.fileNames == rhs.fileNames
+    }
+}
+
+@MainActor protocol MetadataEditorProtocol: AnyObject, Modifiable {
     var metadataSet: Set<Metadata> { get }
     var hasMetadata: Bool { get }
     var state: MetadataEditingState { get }
+    var saveError: MetadataSaveError? { get set }
+    var updateError: MetadataUpdateError? { get set }
 }
 
 extension MetadataEditorProtocol {
@@ -66,53 +102,71 @@ extension MetadataEditorProtocol {
     }
 
     func updateAll(completion: (() -> ())? = nil) {
-        var pending: Set<URL> = Set(metadataSet.map(\.url))
-        for metadata in metadataSet {
-            Task.detached {
-                do {
-                    try await metadata.update {
-                        pending.remove(metadata.url)
-                    }
-                } catch {
-                    pending.remove(metadata.url)
-                }
-            }
-        }
+        let metadatas = metadataSet
+        updateError = nil
 
-        if let completion {
-            Task.detached {
-                var iteration = 0
-                repeat {
-                    try await Task.sleep(for: .milliseconds(100))
-                    iteration += 1
-                } while !pending.isEmpty && iteration < 100
-                completion()
+        Task {
+            let failedURLs = await withTaskGroup(of: URL?.self) { group in
+                for metadata in metadatas {
+                    group.addTask {
+                        do {
+                            try await metadata.update()
+                            return nil
+                        } catch {
+                            return metadata.url
+                        }
+                    }
+                }
+
+                var failedURLs: [URL] = []
+                for await failedURL in group {
+                    if let failedURL {
+                        failedURLs.append(failedURL)
+                    }
+                }
+                return failedURLs
+            }
+
+            await MainActor.run {
+                if !failedURLs.isEmpty {
+                    updateError = .init(failedURLs: failedURLs)
+                }
+                completion?()
             }
         }
     }
 
     func writeAll(completion: (() -> ())? = nil) {
-        var pending: Set<URL> = Set(metadataSet.map(\.url))
-        for metadata in metadataSet {
-            Task.detached {
-                do {
-                    try await metadata.write {
-                        pending.remove(metadata.url)
-                    }
-                } catch {
-                    pending.remove(metadata.url)
-                }
-            }
-        }
+        let metadatas = metadataSet
+        saveError = nil
 
-        if let completion {
-            Task.detached {
-                var iteration = 0
-                repeat {
-                    try await Task.sleep(for: .milliseconds(100))
-                    iteration += 1
-                } while !pending.isEmpty && iteration < 100
-                completion()
+        Task {
+            let failedURLs = await withTaskGroup(of: URL?.self) { group in
+                for metadata in metadatas {
+                    group.addTask {
+                        do {
+                            try await metadata.write()
+                            return nil
+                        } catch {
+                            return metadata.url
+                        }
+                    }
+                }
+
+                var failedURLs: [URL] = []
+                for await failedURL in group {
+                    if let failedURL {
+                        failedURLs.append(failedURL)
+                    }
+                }
+                return failedURLs
+            }
+
+            await MainActor.run {
+                if !failedURLs.isEmpty {
+                    saveError = .init(failedURLs: failedURLs)
+                }
+                completion?()
             }
         }
     }
@@ -121,5 +175,13 @@ extension MetadataEditorProtocol {
 extension MetadataEditorProtocol {
     var isModified: Bool {
         metadataSet.contains(where: \.isModified)
+    }
+
+    func clearSaveError() {
+        saveError = nil
+    }
+
+    func clearUpdateError() {
+        updateError = nil
     }
 }

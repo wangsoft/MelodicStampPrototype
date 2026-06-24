@@ -17,24 +17,42 @@ class RealtimeAnalyzer {
     public var startFrequency: Float = 80 // Initial frequency
     public var endFrequency: Float = 18000 // Cutoff frequency
 
-    @MainActor
-    private lazy var bands: [(lowerFrequency: Float, upperFrequency: Float)] = {
+    private let bands: [(lowerFrequency: Float, upperFrequency: Float)]
+
+    static func frequencyBands(startFrequency: Float, endFrequency: Float, count: Int) -> [(lowerFrequency: Float, upperFrequency: Float)] {
         var bands = [(lowerFrequency: Float, upperFrequency: Float)]()
 
-        // 1: Determine the growth factor according to the start and end spectrum and the number of frequency bands: 2^n
-
-        let n = log2(endFrequency / startFrequency) / Float(frequencyBands)
+        let n = log2(endFrequency / startFrequency) / Float(count)
         var nextBand: (lowerFrequency: Float, upperFrequency: Float) = (startFrequency, 0)
-        for i in 1...frequencyBands {
-            // 2: The upper frequency point of a frequency band is 2^n times the lower frequency point
-
+        for i in 1...count {
             let highFrequency = nextBand.lowerFrequency * powf(2, n)
-            nextBand.upperFrequency = i == frequencyBands ? endFrequency : highFrequency
+            nextBand.upperFrequency = i == count ? endFrequency : highFrequency
             bands.append(nextBand)
             nextBand.lowerFrequency = highFrequency
         }
+
         return bands
-    }()
+    }
+
+    static func frequencyWeights(sampleRate: Float, fftSize: Int) -> [Float] {
+        let bandWidth = sampleRate / Float(fftSize)
+        let bins = fftSize / 2
+
+        var frequencies: [Float] = (0 ..< bins).map { Float($0) * bandWidth }
+        frequencies = frequencies.map { $0 * $0 }
+
+        let c1 = powf(12194.217, 2.0)
+        let c2 = powf(20.598997, 2.0)
+        let c3 = powf(107.65265, 2.0)
+        let c4 = powf(737.86223, 2.0)
+
+        let num: [Float] = frequencies.map { c1 * $0 * $0 }
+        let den: [Float] = frequencies.map { ($0 + c2) * sqrtf(($0 + c3) * ($0 + c4)) * ($0 + c1) }
+
+        return zip(num, den).map { numValue, denValue in
+            1.2589 * numValue / denValue
+        }
+    }
 
     private var spectrumBuffer = [[Float]]()
     public var spectrumSmooth: Float = 0.5 {
@@ -46,12 +64,17 @@ class RealtimeAnalyzer {
 
     init(fftSize: Int) {
         self.fftSize = fftSize
+        self.bands = Self.frequencyBands(
+            startFrequency: startFrequency,
+            endFrequency: endFrequency,
+            count: frequencyBands
+        )
     }
 
     @MainActor
     func analyze(with buffer: AVAudioPCMBuffer) -> [[Float]] {
         let channelsAmplitudes = fft(buffer)
-        let aWeights = createFrequencyWeights()
+        let aWeights = Self.frequencyWeights(sampleRate: Float(buffer.format.sampleRate), fftSize: fftSize)
         if spectrumBuffer.isEmpty {
             for _ in 0 ..< channelsAmplitudes.count {
                 spectrumBuffer.append([Float](repeating: 0, count: bands.count))
@@ -143,28 +166,6 @@ class RealtimeAnalyzer {
         let startIndex = Int(round(band.lowerFrequency / bandWidth))
         let endIndex = min(Int(round(band.upperFrequency / bandWidth)), amplitudes.count - 1)
         return amplitudes[startIndex...endIndex].max()!
-    }
-
-    private func createFrequencyWeights() -> [Float] {
-        let Δf = 44100.0 / Float(fftSize)
-        let bins = fftSize / 2
-
-        var f: [Float] = (0 ..< bins).map { Float($0) * Δf }
-        f = f.map { $0 * $0 }
-
-        let c1 = powf(12194.217, 2.0)
-        let c2 = powf(20.598997, 2.0)
-        let c3 = powf(107.65265, 2.0)
-        let c4 = powf(737.86223, 2.0)
-
-        let num: [Float] = f.map { c1 * $0 * $0 }
-        let den: [Float] = f.map { ($0 + c2) * sqrtf(($0 + c3) * ($0 + c4)) * ($0 + c1) }
-
-        let weights = zip(num, den).map { numValue, denValue in
-            1.2589 * numValue / denValue
-        }
-
-        return Array(weights)
     }
 
     private func highlightWaveform(spectrum: [Float]) -> [Float] {

@@ -169,9 +169,18 @@ struct LeafletView: View {
                 )
             }
 
+            // Handles [j / l] -> adjust progress
+            .onKeyPress(keys: ["j", "l"], phases: .all) { key in
+                let sign: FloatingPointSign = key.characters == "j" ? .minus : .plus
+
+                return keyboardControl.handleProgressAdjustment(
+                    phase: key.phase, modifiers: key.modifiers, sign: sign
+                )
+            }
+
             // Handles [↑ / ↓] -> adjust volume
-            .onKeyPress(keys: [.leftArrow, .rightArrow], phases: .all) { key in
-                let sign: FloatingPointSign = key.key == .leftArrow ? .minus : .plus
+            .onKeyPress(keys: [.upArrow, .downArrow], phases: .all) { key in
+                let sign: FloatingPointSign = key.key == .downArrow ? .minus : .plus
 
                 return keyboardControl.handleVolumeAdjustment(
                     phase: key.phase, modifiers: key.modifiers, sign: sign

@@ -12,6 +12,7 @@ struct InterfaceView: View {
     @Environment(LibraryModel.self) private var library
     @Environment(WindowManagerModel.self) private var windowManager
     @Environment(PlaylistModel.self) private var playlist
+    @Environment(FileManagerModel.self) private var fileManager
 
     @Environment(\.appearsActive) private var appearsActive
 
@@ -47,6 +48,11 @@ struct InterfaceView: View {
             NavigationTitlesView()
             NavigationDocumentView()
         }
+        .fileImportErrorAlert(for: fileManager)
+        .playlistLoadErrorAlert(for: playlist)
+        .playlistOperationErrorAlert(for: playlist)
+        .libraryOperationErrorAlert(for: library)
+        .libraryLoadErrorAlert(for: library)
     }
 
     // MARK: - Main View
@@ -108,12 +114,7 @@ struct InterfaceView: View {
 
     @ViewBuilder private func miniPlayerView(_: NSWindow? = nil) -> some View {
         MiniPlayerView()
-            .padding(12)
-            .padding(.top, 4)
-            .padding(.bottom, -32)
-            .ignoresSafeArea()
-            .frame(minWidth: 500, idealWidth: 500)
-            .fixedSize(horizontal: false, vertical: true)
+            .frame(minWidth: 480, minHeight: 100)
             .background {
                 Group {
                     switch miniPlayerBackgroundStyle {

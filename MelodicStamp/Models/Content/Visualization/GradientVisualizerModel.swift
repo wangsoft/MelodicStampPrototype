@@ -20,13 +20,15 @@ import SwiftUI
     }
 
     static func extractDominantColors(from image: NSImage) async throws -> [Color] {
-        let colors = try DominantColors.dominantColors(
-            nsImage: image, quality: .fair,
-            algorithm: .CIEDE2000, maxCount: 8,
-            options: [.excludeBlack], sorting: .frequency,
-            deltaColors: 6
-        )
-        return colors.map(Color.init)
+        try await Task.detached {
+            let colors = try DominantColors.dominantColors(
+                nsImage: image, quality: .fair,
+                algorithm: .CIEDE2000, maxCount: 8,
+                options: [.excludeBlack], sorting: .frequency,
+                deltaColors: 6
+            )
+            return colors.map(Color.init)
+        }.value
     }
 
     func updateDominantColors(from image: NSImage? = nil) async {

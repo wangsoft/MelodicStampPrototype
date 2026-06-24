@@ -7,45 +7,63 @@
 
 import SwiftUI
 
-struct MakeAlwaysOnTop: NSViewControllerRepresentable {
+struct MakeAlwaysOnTop: NSViewRepresentable {
     @Binding var isAlwaysOnTop: Bool
 
-    func makeNSViewController(context: Context) -> NSViewController {
-        let hostingController = AlwaysOnTopWindowHostingController(rootView: EmptyView())
-        context.coordinator.hostingController = hostingController
-
-        return hostingController
+    func makeNSView(context _: Context) -> AlwaysOnTopWindowView {
+        let view = AlwaysOnTopWindowView()
+        view.isAlwaysOnTop = isAlwaysOnTop
+        return view
     }
 
-    func updateNSViewController(_: NSViewController, context: Context) {
-        if let hostingController = context.coordinator.hostingController {
-            hostingController.isAlwaysOnTop = isAlwaysOnTop
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    class Coordinator {
-        var hostingController: AlwaysOnTopWindowHostingController<EmptyView>!
+    func updateNSView(_ nsView: AlwaysOnTopWindowView, context _: Context) {
+        nsView.isAlwaysOnTop = isAlwaysOnTop
+        nsView.applyWindowLevelIfPossible()
     }
 }
 
-class AlwaysOnTopWindowHostingController<Content: View>: NSHostingController<Content> {
+final class AlwaysOnTopWindowView: NSView {
     var isAlwaysOnTop: Bool = true
 
-    override func viewWillLayout() {
-        super.viewWillLayout()
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
 
-        guard let window = view.window else { return }
+        isHidden = true
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentHuggingPriority(.defaultLow, for: .vertical)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    }
 
-        window.level = isAlwaysOnTop ? .floating : .normal
+    override var intrinsicContentSize: NSSize {
+        .zero
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func applyWindowLevelIfPossible() {
+        guard let window else { return }
+
+        let desiredLevel: NSWindow.Level = isAlwaysOnTop ? .floating : .normal
+        if window.level != desiredLevel {
+            window.level = desiredLevel
+        }
 
         if isAlwaysOnTop {
-            window.collectionBehavior.insert(.canJoinAllSpaces)
-        } else {
+            if !window.collectionBehavior.contains(.canJoinAllSpaces) {
+                window.collectionBehavior.insert(.canJoinAllSpaces)
+            }
+        } else if window.collectionBehavior.contains(.canJoinAllSpaces) {
             window.collectionBehavior.remove(.canJoinAllSpaces)
         }
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyWindowLevelIfPossible()
     }
 }

@@ -65,7 +65,7 @@ extension MetadataEntry: Hashable {
 
 extension MetadataEntry: Equatable {
     static func == (lhs: MetadataEntry<V>, rhs: MetadataEntry<V>) -> Bool {
-        lhs.hashValue == rhs.hashValue
+        lhs.current == rhs.current && lhs.initial == rhs.initial
     }
 }
 
@@ -74,6 +74,8 @@ extension MetadataEntry: Equatable {
 @MainActor @Observable final class MetadataBatchEditingEntry<V: Hashable & Equatable>: Identifiable {
     typealias Entry = MetadataEntry
     typealias EntryKeyPath = WritableKeyPath<Metadata, Entry<V>>
+
+    nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
 
     nonisolated let keyPath: EntryKeyPath
     nonisolated let metadata: Metadata
@@ -145,7 +147,7 @@ extension MetadataBatchEditingEntry: Hashable {
 
 extension MetadataBatchEditingEntry: Equatable {
     nonisolated static func == (lhs: MetadataBatchEditingEntry<V>, rhs: MetadataBatchEditingEntry<V>) -> Bool {
-        lhs.hashValue == rhs.hashValue
+        lhs.keyPath == rhs.keyPath && lhs.metadata == rhs.metadata
     }
 }
 
@@ -154,6 +156,8 @@ extension MetadataBatchEditingEntry: Equatable {
 @MainActor @Observable final class MetadataBatchEditingEntries<V: Hashable & Equatable>: Identifiable {
     typealias Entry = MetadataEntry
     typealias EntryKeyPath = WritableKeyPath<Metadata, Entry<V>>
+
+    nonisolated var id: ObjectIdentifier { ObjectIdentifier(self) }
 
     nonisolated let keyPath: EntryKeyPath
     nonisolated let metadatas: Set<Metadata>
@@ -233,9 +237,11 @@ extension MetadataBatchEditingEntry: Equatable {
     }
 }
 
-extension MetadataBatchEditingEntries: @preconcurrency Sequence {
-    func makeIterator() -> Array<MetadataBatchEditingEntry<V>>.Iterator {
-        metadatas.compactMap { $0[extracting: keyPath] }.makeIterator()
+extension MetadataBatchEditingEntries: Sequence {
+    nonisolated func makeIterator() -> Array<MetadataBatchEditingEntry<V>>.Iterator {
+        MainActor.assumeIsolated {
+            metadatas.compactMap { $0[extracting: keyPath] }.makeIterator()
+        }
     }
 }
 
@@ -248,7 +254,7 @@ extension MetadataBatchEditingEntries: Hashable {
 
 extension MetadataBatchEditingEntries: Equatable {
     nonisolated static func == (lhs: MetadataBatchEditingEntries<V>, rhs: MetadataBatchEditingEntries<V>) -> Bool {
-        lhs.hashValue == rhs.hashValue
+        lhs.keyPath == rhs.keyPath && lhs.metadatas == rhs.metadatas
     }
 }
 

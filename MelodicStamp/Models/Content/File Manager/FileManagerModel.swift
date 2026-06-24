@@ -21,9 +21,33 @@ enum FileAdderPresentationStyle {
     case formingNewPlaylist
 }
 
+struct FileImportError: Identifiable, Equatable {
+    let id = UUID()
+    var message: String
+
+    static func inaccessible(_ urls: [URL]) -> Self {
+        let fileNames = urls.map(\.lastPathComponent).sorted()
+        if fileNames.count == 1, let fileName = fileNames.first {
+            return .init(message: "Could not access \(fileName).")
+        }
+
+        return .init(message: "Could not access \(fileNames.count) selected items.")
+    }
+
+    static var noSupportedFiles: Self {
+        .init(message: "No supported audio files were found.")
+    }
+
+    static func == (lhs: FileImportError, rhs: FileImportError) -> Bool {
+        lhs.message == rhs.message
+    }
+}
+
 @Observable final class FileManagerModel {
     private weak var playlist: PlaylistModel?
     private weak var player: PlayerModel?
+
+    var importError: FileImportError?
 
     var isFileOpenerPresented: Bool = false
     private var fileOpenerPresentationStyle: FileOpenerPresentationStyle = .inCurrentPlaylist
@@ -47,7 +71,7 @@ enum FileAdderPresentationStyle {
     }
 
     func open(url: URL, openWindow: OpenWindowAction) {
-        guard url.canAccessSecurityScopedResourceOrIsReachable() else { return }
+        guard let url = resolvedOpenURL(url) else { return }
 
         Task { @MainActor in
             switch fileOpenerPresentationStyle {
@@ -66,9 +90,8 @@ enum FileAdderPresentationStyle {
     }
 
     func add(urls: [URL], openWindow: OpenWindowAction) {
-        let urls = urls.flatMap { url in
-            FileHelper.flatten(contentsOf: url)
-        }
+        let urls = resolvedAddedURLs(urls)
+        guard !urls.isEmpty else { return }
 
         Task { @MainActor in
             switch fileAdderPresentationStyle {
@@ -83,5 +106,48 @@ enum FileAdderPresentationStyle {
                 ))
             }
         }
+    }
+}
+
+extension FileManagerModel {
+    func resolvedOpenURL(_ url: URL) -> URL? {
+        importError = nil
+
+        guard url.isReachable else {
+            importError = .inaccessible([url])
+            return nil
+        }
+
+        guard FileHelper.filter(url: url) != nil else {
+            importError = .noSupportedFiles
+            return nil
+        }
+
+        return url
+    }
+
+    func resolvedAddedURLs(_ urls: [URL]) -> [URL] {
+        importError = nil
+
+        let inaccessibleURLs = urls.filter { !$0.isReachable }
+        guard inaccessibleURLs.isEmpty else {
+            importError = .inaccessible(inaccessibleURLs)
+            return []
+        }
+
+        let resolvedURLs = urls
+            .flatMap { FileHelper.flatten(contentsOf: $0) }
+            .compactMap { FileHelper.filter(url: $0) }
+
+        guard !resolvedURLs.isEmpty else {
+            importError = .noSupportedFiles
+            return []
+        }
+
+        return resolvedURLs
+    }
+
+    func clearImportError() {
+        importError = nil
     }
 }

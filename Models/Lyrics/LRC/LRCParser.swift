@@ -33,7 +33,7 @@ import RegexBuilder
 
             guard let match = try Self.lineRegex.wholeMatch(
                 in: content.trimmingCharacters(in: .whitespacesAndNewlines)
-            ) else { return }
+            ) else { continue }
             // Output: (original, tagString, _, content)
 
             let tagString = String(match.output.1).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -75,16 +75,16 @@ import RegexBuilder
                 var line: LRCLyricLine = .init(content: content)
 
                 for tag in tags {
-                    // Only timestamps are valid in a lyric line
-                    guard let time = try TimeInterval(timestamp: tag) else { continue }
+                    if let time = try? TimeInterval(timestamp: tag) {
+                        if line.beginTime == nil {
+                            line.beginTime = time
+                        } else if line.endTime == nil {
+                            line.endTime = time
+                        }
+                    }
 
-                    // Parses timestamp
-                    if line.beginTime == nil {
-                        // Saves as beginning time
-                        line.beginTime = time
-                    } else if line.endTime == nil {
-                        // Saves as ending time
-                        line.endTime = time
+                    if let parsedTag = try? Self.parseTag(string: tag) {
+                        line.tags.append(parsedTag)
                     }
                 }
 

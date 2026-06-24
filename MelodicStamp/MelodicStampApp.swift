@@ -34,9 +34,10 @@ struct MelodicStampApp: App {
         } defaultValue: {
             CreationParameters()
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 960, height: 550)
         .windowToolbarStyle(.unified)
         .windowManagerRole(.principal)
+        .restorationBehavior(.disabled)
         .handlesExternalEvents(matching: []) // Crucial for handling custom external events in `AppDelegate`
         .commands {
             LocalizedInspectorCommands()
@@ -76,7 +77,7 @@ struct MelodicStampApp: App {
         }
         .defaultLaunchBehavior(.suppressed)
         .restorationBehavior(.disabled)
-        .windowResizability(.contentSize)
+        .defaultSize(width: 480, height: 360)
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified)
         .windowManagerRole(.associated)

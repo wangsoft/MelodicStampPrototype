@@ -22,7 +22,7 @@ extension FileHelper {
         ) else { return [] }
 
         return contents.flatMap { url in
-            guard url.isFileURL else {
+            if url.hasDirectoryPath, isRecursive {
                 return flatten(contentsOf: url, allowedContentTypes: allowedContentTypes, isRecursive: isRecursive)
             }
 

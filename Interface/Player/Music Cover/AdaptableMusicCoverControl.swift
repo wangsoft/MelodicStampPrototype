@@ -46,11 +46,8 @@ struct AdaptableMusicCoverControl: View {
         ) { result in
             switch result {
             case let .success(url):
-                guard url.startAccessingSecurityScopedResource() else { break }
-                defer { url.stopAccessingSecurityScopedResource() }
-
                 guard
-                    let image = NSImage(contentsOf: url),
+                    let image = url.compactSecurityScopedAccess({ NSImage(contentsOf: $0) }),
                     let attachedPicture = image.attachedPicture(of: type)
                 else { break }
 

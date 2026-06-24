@@ -9,8 +9,6 @@ import AppKit
 import CSFBAudioEngine
 import MediaPlayer
 
-extension NSImage: @retroactive @unchecked Sendable {}
-
 extension NSImage {
     var attachedPicture: AttachedPicture? {
         tiffRepresentation.flatMap { .init(imageData: $0) }

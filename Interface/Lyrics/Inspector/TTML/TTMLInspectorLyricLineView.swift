@@ -19,10 +19,10 @@ struct TTMLInspectorLyricLineView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("\(line.position)")
+                Text(verbatim: "\(line.position)")
                     .foregroundStyle(.tint)
 
-                Text("#\(line.index)")
+                Text(verbatim: "#\(line.index)")
             }
             .font(.caption)
             .monospaced()

@@ -182,7 +182,7 @@ struct PlayerCommands: Commands {
                             playlist.playbackMode == mode
                         } set: { newValue in
                             guard newValue else { return }
-                            playlist.playbackMode = mode
+                            playlist.setPlaybackMode(mode)
                         }
 
                         Toggle(isOn: binding) {
@@ -192,10 +192,11 @@ struct PlayerCommands: Commands {
 
                     Divider()
 
-                    Toggle(isOn: $playlist.playbackLooping) {
-                        Image(systemSymbol: .repeat1)
-
-                        Text("Looping")
+                    Button {
+                        playlist.cyclePlaybackRepeatMode()
+                    } label: {
+                        PlaybackRepeatView(mode: playlist.playbackRepeatMode)
+                        Text(playlist.playbackRepeatMode.name)
                     }
                 }
                 .badge(playbackName)

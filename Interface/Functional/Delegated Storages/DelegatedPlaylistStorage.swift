@@ -11,6 +11,37 @@ import SwiftUI
 extension DelegatedPlaylistStorage: TypeNameReflectable {}
 
 extension DelegatedPlaylistStorage {
+    struct PlaylistRestoreResult: Equatable {
+        var urls: [URL]
+        var failedBookmarkCount: Int
+    }
+
+    enum PlaylistRestoreError: Identifiable, Equatable {
+        case decodeFailed
+        case bookmarkResolutionFailed(count: Int)
+
+        var id: String {
+            switch self {
+            case .decodeFailed:
+                return "decodeFailed"
+            case let .bookmarkResolutionFailed(count):
+                return "bookmarkResolutionFailed-\(count)"
+            }
+        }
+
+        var message: String {
+            switch self {
+            case .decodeFailed:
+                return "Could not restore the previous playlist."
+            case let .bookmarkResolutionFailed(count):
+                if count == 1 {
+                    return "Could not restore 1 playlist item from the previous session."
+                }
+                return "Could not restore \(count) playlist items from the previous session."
+            }
+        }
+    }
+
     enum DelegatedPlaylist: Equatable, Hashable, Codable {
         case referenced(
             bookmarks: [Data],
@@ -37,6 +68,7 @@ struct DelegatedPlaylistStorage: View {
     // MARK: States
 
     @State private var playlistState: DelegatedStorageState<Data?> = .init()
+    @State private var restoreError: PlaylistRestoreError?
 
     @State private var playbackVolumeState: DelegatedStorageState<Double?> = .init()
     @State private var playbackMutedState: DelegatedStorageState<Bool?> = .init()
@@ -48,6 +80,25 @@ struct DelegatedPlaylistStorage: View {
         }
         .onAppear {
             playlistState.isReady = true
+        }
+        .alert(
+            "Playlist Restore Failed",
+            isPresented: .init(
+                get: {
+                    restoreError != nil
+                },
+                set: { isPresented in
+                    if !isPresented {
+                        restoreError = nil
+                    }
+                }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                restoreError = nil
+            }
+        } message: {
+            Text(restoreError?.message ?? "")
         }
     }
 
@@ -70,11 +121,12 @@ struct DelegatedPlaylistStorage: View {
 
                 if let data = newValue {
                     Task.detached {
-                        try await restorePlaylist(from: data)
-
-                        logger.log("Successfully restored playlist")
+                        let restoreError = await restorePlaylist(from: data)
 
                         Task { @MainActor in
+                            self.restoreError = restoreError
+                            logger.log("Successfully restored playlist")
+
                             // Dependents
                             playbackVolumeState.isReady = true
                             playbackMutedState.isReady = true
@@ -129,27 +181,28 @@ struct DelegatedPlaylistStorage: View {
             }
     }
 
-    private func restorePlaylist(from data: Data) async throws {
-        guard let delegatedPlaylist = try? JSONDecoder().decode(DelegatedPlaylist.self, from: data) else { return }
+    @MainActor
+    private func restorePlaylist(from data: Data) async -> PlaylistRestoreError? {
+        guard let delegatedPlaylist = try? JSONDecoder().decode(DelegatedPlaylist.self, from: data) else {
+            return .decodeFailed
+        }
         switch delegatedPlaylist {
         case let .referenced(bookmarks, currentTrackURL, currentTrackElapsedTime, playbackMode, playbackLooping):
             guard !playlist.mode.isCanonical else { break }
 
-            var urls: [URL] = []
-            try bookmarks.forEach {
-                var isStale = false
-                let url = try URL(resolvingBookmarkData: $0, options: [], bookmarkDataIsStale: &isStale)
-                guard !isStale else { return }
-                urls.append(url)
-            }
+            let restoreResult = Self.restoreReferencedBookmarks(from: bookmarks)
+            let urls = restoreResult.urls
             await playlist.append(urls)
 
-            playlist.segments.state = .init(
+            playlist.restorePlaybackState(.init(
                 currentTrackURL: currentTrackURL,
                 currentTrackElapsedTime: currentTrackElapsedTime,
                 playbackMode: playbackMode,
                 playbackLooping: playbackLooping
-            )
+            ))
+            if restoreResult.failedBookmarkCount > 0 {
+                return .bookmarkResolutionFailed(count: restoreResult.failedBookmarkCount)
+            }
         case let .canonical(id):
             switch playlist.mode {
             case .canonical:
@@ -160,6 +213,8 @@ struct DelegatedPlaylistStorage: View {
                 await playlist.loadTracks()
             }
         }
+
+        return nil
     }
 
     private func storePlaylist() async throws {
@@ -169,7 +224,7 @@ struct DelegatedPlaylistStorage: View {
             delegatedPlaylist = .canonical(playlist.id)
         case .referenced:
             let bookmarks: [Data] = try playlist.map(\.url).compactMap { url in
-                try url.bookmarkData(options: [])
+                try url.securityScopedBookmarkData()
             }
 
             delegatedPlaylist = .referenced(
@@ -181,5 +236,26 @@ struct DelegatedPlaylistStorage: View {
             )
         }
         playlistData = try? JSONEncoder().encode(delegatedPlaylist)
+    }
+
+    static func restoreReferencedBookmarks(from bookmarks: [Data]) -> PlaylistRestoreResult {
+        var urls: [URL] = []
+        var failedBookmarkCount = 0
+
+        for bookmark in bookmarks {
+            do {
+                var isStale = false
+                let url = try URL.resolvingSecurityScopedBookmarkData(bookmark, bookmarkDataIsStale: &isStale)
+                guard !isStale else {
+                    failedBookmarkCount += 1
+                    continue
+                }
+                urls.append(url)
+            } catch {
+                failedBookmarkCount += 1
+            }
+        }
+
+        return .init(urls: urls, failedBookmarkCount: failedBookmarkCount)
     }
 }

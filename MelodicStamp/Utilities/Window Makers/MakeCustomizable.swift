@@ -7,44 +7,43 @@
 
 import SwiftUI
 
-struct MakeCustomizable: NSViewControllerRepresentable {
+struct MakeCustomizable: NSViewRepresentable {
     var customization: ((NSWindow) -> ())?
     var willAppear: ((NSWindow) -> ())?
     var didAppear: ((NSWindow) -> ())?
     var willDisappear: ((NSWindow) -> ())?
     var didDisappear: ((NSWindow) -> ())?
 
-    func makeNSViewController(context: Context) -> NSViewController {
-        let hostingController = CustomizableWindowHostingController(
-            rootView: EmptyView(), customization: customization,
-            willAppear: willAppear, didAppear: didAppear,
-            willDisappear: willDisappear, didDisappear: didDisappear
+    func makeNSView(context _: Context) -> CustomizableWindowView {
+        CustomizableWindowView(
+            customization: customization,
+            willAppear: willAppear,
+            didAppear: didAppear,
+            willDisappear: willDisappear,
+            didDisappear: didDisappear
         )
-        context.coordinator.hostingController = hostingController
-
-        return hostingController
     }
 
-    func updateNSViewController(_: NSViewController, context _: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    class Coordinator {
-        var hostingController: CustomizableWindowHostingController<EmptyView>!
+    func updateNSView(_ nsView: CustomizableWindowView, context _: Context) {
+        nsView.customization = customization
+        nsView.willAppear = willAppear
+        nsView.didAppear = didAppear
+        nsView.willDisappear = willDisappear
+        nsView.didDisappear = didDisappear
+        nsView.applyCustomizationIfPossible()
     }
 }
 
-class CustomizableWindowHostingController<Content: View>: NSHostingController<Content> {
+final class CustomizableWindowView: NSView {
     var customization: ((NSWindow) -> ())?
     var willAppear: ((NSWindow) -> ())?
     var didAppear: ((NSWindow) -> ())?
     var willDisappear: ((NSWindow) -> ())?
     var didDisappear: ((NSWindow) -> ())?
+    private weak var observedWindow: NSWindow?
 
     init(
-        rootView: Content, customization: ((NSWindow) -> ())? = nil,
+        customization: ((NSWindow) -> ())? = nil,
         willAppear: ((NSWindow) -> ())? = nil, didAppear: ((NSWindow) -> ())? = nil,
         willDisappear: ((NSWindow) -> ())? = nil, didDisappear: ((NSWindow) -> ())? = nil
     ) {
@@ -53,46 +52,58 @@ class CustomizableWindowHostingController<Content: View>: NSHostingController<Co
         self.didAppear = didAppear
         self.willDisappear = willDisappear
         self.didDisappear = didDisappear
-        super.init(rootView: rootView)
+        super.init(frame: .zero)
+
+        isHidden = true
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentHuggingPriority(.defaultLow, for: .vertical)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .vertical)
+    }
+
+    override var intrinsicContentSize: NSSize {
+        .zero
     }
 
     @available(*, unavailable)
-    @MainActor @preconcurrency dynamic required init?(coder _: NSCoder) {
+    required init?(coder _: NSCoder) {
         fatalError("init(coder:) has not been implemented")
     }
 
-    override func viewWillLayout() {
-        super.viewWillLayout()
-
-        guard let window = view.window else { return }
+    func applyCustomizationIfPossible() {
+        guard let window else { return }
         customization?(window)
     }
 
-    override func viewWillAppear() {
-        super.viewWillAppear()
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        if let window, window !== newWindow {
+            willDisappear?(window)
+        }
+        if let newWindow, observedWindow !== newWindow {
+            willAppear?(newWindow)
+        }
 
-        guard let window = view.window else { return }
-        willAppear?(window)
+        super.viewWillMove(toWindow: newWindow)
     }
 
-    override func viewDidAppear() {
-        super.viewDidAppear()
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
 
-        guard let window = view.window else { return }
-        didAppear?(window)
-    }
+        guard let window else {
+            if let observedWindow {
+                didDisappear?(observedWindow)
+            }
+            observedWindow = nil
+            return
+        }
 
-    override func viewWillDisappear() {
-        super.viewWillDisappear()
+        let didMoveToNewWindow = observedWindow !== window
+        observedWindow = window
+        applyCustomizationIfPossible()
 
-        guard let window = view.window else { return }
-        willDisappear?(window)
-    }
-
-    override func viewDidDisappear() {
-        super.viewDidDisappear()
-
-        guard let window = view.window else { return }
-        didDisappear?(window)
+        if didMoveToNewWindow {
+            didAppear?(window)
+        }
     }
 }

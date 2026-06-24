@@ -25,9 +25,9 @@ struct ContentView: View {
                 minHeight = 550
                 maxHeight = nil
             case .miniPlayer:
-                minWidth = nil
-                maxWidth = 500
-                minHeight = nil
+                minWidth = 480
+                minHeight = 100
+                maxWidth = nil
                 maxHeight = nil
             }
         }
@@ -92,6 +92,10 @@ struct ContentView: View {
         self.audioVisualizer = AudioVisualizerModel()
         self.gradientVisualizer = GradientVisualizerModel()
 
+        var initialSizer = Sizer()
+        initialSizer.with(windowStyle: parameters.initialWindowStyle)
+        self._sizer = State(initialValue: initialSizer)
+
         if parameters.isConcrete {
             self.concreteParameters = parameters
         }
@@ -126,6 +130,7 @@ struct ContentView: View {
                     if let newValue {
                         windowManager.observe(newValue)
                     }
+                    scheduleWindowSizing(to: newValue, style: windowManager.style)
 
                     if appearsActive {
                         isFocused = true
@@ -137,10 +142,7 @@ struct ContentView: View {
                     isFocused = true
                     resetFocus(in: namespace)
                     sizer.with(windowStyle: newValue)
-
-                    DispatchQueue.main.async {
-                        sizer.reset()
-                    }
+                    scheduleWindowSizing(to: window, style: newValue)
                 }
 
                 // MARK: Updates
@@ -163,8 +165,6 @@ struct ContentView: View {
                     audioVisualizer.clearData()
                 }
         }
-        .frame(minWidth: sizer.minWidth, maxWidth: sizer.maxWidth, minHeight: sizer.minHeight, maxHeight: sizer.maxHeight)
-
         // MARK: Environments
 
         .environment(\.namespace, namespace)
@@ -199,6 +199,48 @@ struct ContentView: View {
     }
 
     // MARK: - Functions
+
+    private func applyWindowSizing(to window: NSWindow?, style: MelodicStampWindowStyle) {
+        guard let window else { return }
+
+        let minimumContentSize: CGSize = switch style {
+        case .main:
+            CGSize(width: 960, height: 550)
+        case .miniPlayer:
+            CGSize(width: 480, height: 100)
+        }
+        let minimumFrameSize = window.frameRect(
+            forContentRect: CGRect(origin: .zero, size: minimumContentSize)
+        ).size
+
+        window.minSize = minimumFrameSize
+        window.maxSize = CGSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+
+        var frame = window.frame
+        var shouldUpdateFrame = false
+
+        if frame.width < minimumFrameSize.width {
+            frame.size.width = minimumFrameSize.width
+            shouldUpdateFrame = true
+        }
+
+        if frame.height < minimumFrameSize.height {
+            frame.size.height = minimumFrameSize.height
+            shouldUpdateFrame = true
+        }
+
+        if shouldUpdateFrame {
+            window.setFrame(frame, display: true)
+        }
+    }
+
+    private func scheduleWindowSizing(to window: NSWindow?, style: MelodicStampWindowStyle) {
+        guard let window else { return }
+
+        DispatchQueue.main.async {
+            applyWindowSizing(to: window, style: style)
+        }
+    }
 
     private func processConcreteParameters(_ parameters: CreationParameters) {
         if !windowManager.hasConcreteParameters {

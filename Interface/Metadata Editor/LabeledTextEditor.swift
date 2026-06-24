@@ -31,6 +31,7 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
     private var layout: LabeledTextEditorLayout
     private var style: LabeledTextEditorStyle
     private var allowedFileTypes: [UTType]
+    private var networkLoader: (() async throws -> String?)?
     @ViewBuilder private var label: () -> Label
     @ViewBuilder private var actions: () -> Actions
 
@@ -38,12 +39,16 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
 
     @State private var isPresented: Bool = false
     @State private var isFileImporterPresented: Bool = false
+    @State private var isLoadingFromNetwork: Bool = false
+    @State private var networkLoadingError: String?
+    @State private var fileLoadingError: String?
 
     init(
         entries: Entries,
         layout: LabeledTextEditorLayout = .field,
         style: LabeledTextEditorStyle = .regular,
         allowedFileTypes: [UTType] = [.text, .ttml],
+        networkLoader: (() async throws -> String?)? = nil,
         @ViewBuilder label: @escaping () -> Label,
         @ViewBuilder actions: @escaping () -> Actions
     ) {
@@ -51,6 +56,7 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
         self.layout = layout
         self.style = style
         self.allowedFileTypes = allowedFileTypes
+        self.networkLoader = networkLoader
         self.label = label
         self.actions = actions
     }
@@ -60,6 +66,7 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
         layout: LabeledTextEditorLayout = .field,
         style: LabeledTextEditorStyle = .regular,
         allowedFileTypes: [UTType] = [.text, .ttml],
+        networkLoader: (() async throws -> String?)? = nil,
         @ViewBuilder label: @escaping () -> Label
     ) where Actions == EmptyView {
         self.init(
@@ -67,6 +74,7 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
             layout: layout,
             style: style,
             allowedFileTypes: allowedFileTypes,
+            networkLoader: networkLoader,
             label: label
         ) {
             EmptyView()
@@ -79,13 +87,15 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
         layout: LabeledTextEditorLayout = .field,
         style: LabeledTextEditorStyle = .regular,
         allowedFileTypes: [UTType] = [.text, .ttml],
+        networkLoader: (() async throws -> String?)? = nil,
         @ViewBuilder actions: @escaping () -> Actions
     ) where Label == Text {
         self.init(
             entries: entries,
             layout: layout,
             style: style,
-            allowedFileTypes: allowedFileTypes
+            allowedFileTypes: allowedFileTypes,
+            networkLoader: networkLoader
         ) {
             Text(key)
         } actions: {
@@ -98,14 +108,16 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
         entries: Entries,
         layout: LabeledTextEditorLayout = .field,
         style: LabeledTextEditorStyle = .regular,
-        allowedFileTypes: [UTType] = [.text, .ttml]
+        allowedFileTypes: [UTType] = [.text, .ttml],
+        networkLoader: (() async throws -> String?)? = nil
     ) where Label == Text, Actions == EmptyView {
         self.init(
             key,
             entries: entries,
             layout: layout,
             style: style,
-            allowedFileTypes: allowedFileTypes
+            allowedFileTypes: allowedFileTypes,
+            networkLoader: networkLoader
         ) {
             EmptyView()
         }
@@ -196,23 +208,49 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
             .presentationAttachmentBar(edge: .bottom, attachment: controls)
             .presentationSizing(.fitted)
             .frame(minWidth: 725, minHeight: 500, maxHeight: 1200)
+            .alert(
+                "Failed to Load Lyrics",
+                isPresented: Binding {
+                    networkLoadingError != nil
+                } set: { isPresented in
+                    if !isPresented {
+                        networkLoadingError = nil
+                    }
+                }
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(networkLoadingError ?? "")
+            }
+            .alert(
+                "Failed to Load File",
+                isPresented: Binding {
+                    fileLoadingError != nil
+                } set: { isPresented in
+                    if !isPresented {
+                        fileLoadingError = nil
+                    }
+                }
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(fileLoadingError ?? "")
+            }
             .fileImporter(
                 isPresented: $isFileImporterPresented,
                 allowedContentTypes: allowedFileTypes
             ) { result in
                 switch result {
                 case let .success(url):
-                    guard url.startAccessingSecurityScopedResource() else { break }
-                    defer { url.stopAccessingSecurityScopedResource() }
-
                     do {
-                        let content = try String(contentsOf: url, encoding: .utf8)
+                        let content = try LyricsTextFileLoader().load(from: url)
                         entries.setAll { V.wrappingUpdate($0, with: content) }
                     } catch {
-                        break
+                        fileLoadingError = error.localizedDescription
                     }
-                case .failure:
-                    break
+                case let .failure(error):
+                    guard !error.isUserCancellation else { return }
+                    fileLoadingError = error.localizedDescription
                 }
             }
         }
@@ -265,6 +303,24 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
 
             Spacer()
 
+            if let networkLoader {
+                Button {
+                    loadFromNetwork(networkLoader)
+                } label: {
+                    HStack {
+                        Text("Load from Network")
+
+                        if isLoadingFromNetwork {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "network")
+                        }
+                    }
+                }
+                .disabled(isLoadingFromNetwork)
+            }
+
             Button {
                 isFileImporterPresented = true
             } label: {
@@ -285,6 +341,29 @@ struct LabeledTextEditor<Label, Actions, V>: View where Label: View, Actions: Vi
             .foregroundStyle(.tint)
         }
         .buttonStyle(.alive)
+    }
+
+    @MainActor private func loadFromNetwork(_ loader: @escaping () async throws -> String?) {
+        guard !isLoadingFromNetwork else { return }
+
+        Task {
+            isLoadingFromNetwork = true
+            defer { isLoadingFromNetwork = false }
+
+            do {
+                guard let content = try await loader() else { return }
+                entries.setAll { V.wrappingUpdate($0, with: content) }
+            } catch {
+                networkLoadingError = error.localizedDescription
+            }
+        }
+    }
+}
+
+private extension Error {
+    var isUserCancellation: Bool {
+        let nsError = self as NSError
+        return nsError.domain == NSCocoaErrorDomain && nsError.code == NSUserCancelledError
     }
 }
 

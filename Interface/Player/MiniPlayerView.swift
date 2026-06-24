@@ -72,8 +72,6 @@ struct MiniPlayerView: View {
     // MARK: - Body
 
     var body: some View {
-        @Bindable var windowManager = windowManager
-
         VStack(spacing: 12) {
             header()
                 .padding(.horizontal, 4)
@@ -101,15 +99,11 @@ struct MiniPlayerView: View {
         .onChange(of: appearsActive, initial: true) { _, newValue in
             isFocused = newValue
         }
+        .playbackErrorAlert(for: player)
+        .outputDeviceErrorAlert(for: player)
 
         // MARK: Window Customizations
 
-        .toolbar(removing: .title)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .windowFullScreenBehavior(.disabled)
-        .background(MakeAlwaysOnTop(
-            isAlwaysOnTop: $windowManager.isAlwaysOnTop
-        ))
 
         // MARK: Lyrics
 
@@ -163,6 +157,15 @@ struct MiniPlayerView: View {
                     phase: key.phase, modifiers: key.modifiers, sign: sign
                 )
             }
+        }
+
+        // Handles [j / l] -> adjust progress
+        .onKeyPress(keys: ["j", "l"], phases: .all) { key in
+            let sign: FloatingPointSign = key.characters == "j" ? .minus : .plus
+
+            return keyboardControl.handleProgressAdjustment(
+                phase: key.phase, modifiers: key.modifiers, sign: sign
+            )
         }
 
         // Handles [escape] -> regain progress control
@@ -219,7 +222,7 @@ struct MiniPlayerView: View {
 
             Button {
                 let hasShift = NSEvent.modifierFlags.contains(.shift)
-                playlist.playbackMode = playlist.playbackMode.cycle(negate: hasShift)
+                playlist.cyclePlaybackMode(negate: hasShift)
             } label: {
                 Image(systemSymbol: playlist.playbackMode.systemSymbol)
                     .contentTransition(.symbolEffect(.replace))
@@ -229,17 +232,21 @@ struct MiniPlayerView: View {
                 id: PlayerNamespace.playbackModeButton, in: namespace!
             )
             .contextMenu {
-                PlaybackModePicker(selection: $playlist.playbackMode)
+                PlaybackModePicker(
+                    selection: Binding(
+                        get: { playlist.playbackMode },
+                        set: { playlist.setPlaybackMode($0) }
+                    )
+                )
             }
 
             // MARK: Playback Looping
 
             Button {
-                playlist.playbackLooping.toggle()
+                playlist.cyclePlaybackRepeatMode()
             } label: {
-                Image(systemSymbol: .repeat1)
+                PlaybackRepeatView(mode: playlist.playbackRepeatMode)
                     .frame(width: 16, height: 16)
-                    .aliveHighlight(playlist.playbackLooping)
             }
             .matchedGeometryEffect(
                 id: PlayerNamespace.playbackLoopingButton, in: namespace!

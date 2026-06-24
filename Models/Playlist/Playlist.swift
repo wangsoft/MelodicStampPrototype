@@ -305,7 +305,11 @@ extension Playlist {
         try createFolder()
 
         let destinationURL = generateCanonicalURL(for: track.url)
-        try FileManager.default.copyItem(at: track.url, to: destinationURL)
+        guard let _: Void = try track.url.withSecurityScopedAccess({ scopedURL in
+            try FileManager.default.copyItem(at: scopedURL, to: destinationURL)
+        }) else {
+            throw CocoaError(.fileReadNoPermission)
+        }
 
         logger.info("Migrating to canonical track at \(destinationURL), copying from \(track.url)")
         return try await Track(

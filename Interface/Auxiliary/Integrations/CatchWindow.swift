@@ -12,14 +12,20 @@ struct CatchWindow<Content>: View where Content: View {
 
     @State private var window: NSWindow?
 
+    private func updateWindow(_ window: NSWindow) {
+        if self.window !== window {
+            self.window = window
+        }
+    }
+
     var body: some View {
         content(window)
             .background(MakeCustomizable(customization: { window in
-                self.window = window
+                updateWindow(window)
             }, willAppear: { window in
-                self.window = window
+                updateWindow(window)
             }, didAppear: { window in
-                self.window = window
+                updateWindow(window)
             }))
     }
 }

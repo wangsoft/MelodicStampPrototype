@@ -32,9 +32,13 @@ extension TrackIndexer {
 
             Task.detached {
                 for (index, element) in value.enumerated() {
-                    let track = await Track(loadingFrom: trackURL(for: element))
+                    let url = trackURL(for: element)
+                    guard url.isReachable else { continue }
+
+                    let track = await Track(loadingFrom: url)
                     continuation.yield((index, track))
                 }
+                continuation.finish()
             }
         }
     }

@@ -9,6 +9,7 @@ import Accelerate
 import CAAudioHardware
 import Combine
 import Defaults
+import MediaPlayer
 import os.log
 import SFBAudioEngine
 import SwiftUI
@@ -20,6 +21,18 @@ extension PlayerModel: TypeNameReflectable {}
 extension PlayerModel {
     static let interval: TimeInterval = 0.1
     static let bufferSize: AVAudioFrameCount = 2048
+}
+
+extension PlayerModel {
+    struct PlaybackError: Identifiable, Equatable {
+        let id = UUID()
+        var message: String
+    }
+
+    struct OutputDeviceError: Identifiable, Equatable {
+        let id = UUID()
+        var message: String
+    }
 }
 
 @Observable final class PlayerModel: NSObject {
@@ -54,9 +67,11 @@ extension PlayerModel {
     private(set) var outputDevices: [AudioDevice] = []
     private(set) var defaultOutputDevice: AudioDevice?
     private(set) var defaultSystemOutputDevice: AudioDevice?
+    private(set) var outputDeviceError: OutputDeviceError?
 
     private(set) var isUsingSystemOutputDevice: Bool = false
     private var _selectedOutputDevice: AudioDevice?
+    private var dismissedOutputDeviceErrorMessage: String?
 
     // Exposed value, `nil` for system output device
     var selectedOutputDevice: AudioDevice? {
@@ -85,6 +100,7 @@ extension PlayerModel {
 
     private(set) var playbackState: PlaybackState = .stopped
     private(set) var playbackTime: PlaybackTime?
+    private(set) var playbackError: PlaybackError?
     var unwrappedPlaybackTime: PlaybackTime { playbackTime ?? .init() }
 
     // MARK: Responsive Fields
@@ -190,7 +206,8 @@ extension PlayerModel {
 
         timer
             .receive(on: DispatchQueue.main)
-            .sink { _ in
+            .sink { [weak self] _ in
+                guard let self else { return }
                 self.updateRunning()
                 self.updatePlaying()
                 self.updatePlaybackState()
@@ -201,6 +218,20 @@ extension PlayerModel {
                 self.updateOutputDevices()
             }
             .store(in: &cancellables)
+    }
+
+    deinit {
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+
+        cancellables.removeAll()
     }
 }
 
@@ -252,6 +283,30 @@ extension PlayerModel {
 }
 
 extension PlayerModel {
+    func clearPlaybackError() {
+        playbackError = nil
+    }
+
+    private func reportPlaybackError(_ error: Error) {
+        playbackError = .init(message: error.localizedDescription)
+    }
+
+    func clearOutputDeviceError() {
+        dismissedOutputDeviceErrorMessage = outputDeviceError?.message
+        outputDeviceError = nil
+    }
+
+    private func reportOutputDeviceError(_ error: Error) {
+        let message = error.localizedDescription
+        guard dismissedOutputDeviceErrorMessage != message else { return }
+        outputDeviceError = .init(message: message)
+    }
+
+    private func clearOutputDeviceErrorAfterRecovery() {
+        outputDeviceError = nil
+        dismissedOutputDeviceErrorMessage = nil
+    }
+
     // MARK: Play
 
     func play(_ url: URL) async {
@@ -261,8 +316,18 @@ extension PlayerModel {
 
     func play(_ track: Track?) {
         if let track {
+            let restoredElapsedTime = restorableElapsedTime(for: track)
             currentTrack = track
             player.play(track)
+
+            if let restoredElapsedTime {
+                player.seekTime(to: restoredElapsedTime)
+                updatePlaybackState()
+                updatePlaybackTime()
+                updateNowPlayingInfo(with: playbackState)
+            } else {
+                playlist?.segments.state.currentTrackElapsedTime = .zero
+            }
         } else {
             stop()
         }
@@ -283,7 +348,6 @@ extension PlayerModel {
     }
 
     func stop() {
-        volume = .zero
         isPlaying = false
         isMuted = false
 
@@ -310,6 +374,15 @@ extension PlayerModel {
         }
 
         play(previousTrack)
+    }
+
+    private func restorableElapsedTime(for track: Track) -> TimeInterval? {
+        guard let state = playlist?.segments.state,
+              state.currentTrackURL == track.url,
+              state.currentTrackElapsedTime >= 1
+        else { return nil }
+
+        return state.currentTrackElapsedTime
     }
 
     // MARK: Engine
@@ -373,10 +446,14 @@ extension PlayerModel {
 
     // MARK: Output Devices
 
-    private func selectOutputDevice(_ device: AudioDevice) {
+    private func selectOutputDevice(_ device: AudioDevice) throws {
         do {
             try player.selectOutputDevice(device)
-        } catch {}
+        } catch {
+            reportOutputDeviceError(error)
+            logger.error("\(error)")
+            throw error
+        }
     }
 
     func updateOutputDevices(forceUpdating: Bool = false) {
@@ -387,19 +464,24 @@ extension PlayerModel {
 
             if isUsingSystemOutputDevice {
                 if let defaultSystemOutputDevice, forceUpdating || defaultSystemOutputDevice != _selectedOutputDevice {
-                    selectOutputDevice(defaultSystemOutputDevice)
+                    try selectOutputDevice(defaultSystemOutputDevice)
                     _selectedOutputDevice = defaultSystemOutputDevice
 
                     logger.info("Setting output device to system: \("\(defaultSystemOutputDevice)")")
                 }
             } else {
                 if let device = _selectedOutputDevice, try forceUpdating || device != player.selectedOutputDevice() {
-                    selectOutputDevice(device)
+                    try selectOutputDevice(device)
 
                     logger.info("Setting output device to \("\(device)")")
                 }
             }
-        } catch {}
+
+            clearOutputDeviceErrorAfterRecovery()
+        } catch {
+            reportOutputDeviceError(error)
+            logger.error("\(error)")
+        }
     }
 }
 
@@ -417,6 +499,14 @@ extension PlayerModel: PlayerDelegate {
                 // Jumps to next track
                 self.playNextTrack()
             }
+        }
+    }
+
+    nonisolated func player(_: some MelodicStamp.Player, encounteredError error: Error) {
+        Task { @MainActor in
+            stop()
+            reportPlaybackError(error)
+            logger.error("\(error)")
         }
     }
 }
@@ -450,6 +540,7 @@ extension PlayerModel: AudioPlayer.Delegate {
     nonisolated func audioPlayer(_: AudioPlayer, encounteredError error: Error) {
         Task { @MainActor in
             stop()
+            reportPlaybackError(error)
             logger.error("\(error)")
         }
     }

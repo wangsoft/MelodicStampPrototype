@@ -47,7 +47,7 @@ struct FloatingWindowsView: View {
         .onGeometryChange(for: CGSize.self) { proxy in
             proxy.size
         } action: { newValue in
-            floatingWindows.updateTabBarPosition(size: newValue, in: mainWindow, animate: true)
+            floatingWindows.updateTabBarPosition(size: newValue, in: mainWindow)
         }
     }
 
@@ -56,13 +56,17 @@ struct FloatingWindowsView: View {
             .onGeometryChange(for: CGSize.self) { proxy in
                 proxy.size
             } action: { newValue in
-                floatingWindows.updatePlayerPosition(size: newValue, in: mainWindow, animate: true)
+                floatingWindows.updatePlayerPosition(size: newValue, in: mainWindow)
             }
     }
 
     private func initializeFloatingWindows(to mainWindow: NSWindow? = nil) {
         initializationDispatch?.cancel()
         let dispatch = DispatchWorkItem {
+            guard let mainWindow, mainWindow.frame.width >= 600, mainWindow.frame.height >= 400 else {
+                return
+            }
+
             floatingWindows.addTabBar(to: mainWindow) {
                 floatingTabBarView(mainWindow: mainWindow)
                     .environment(floatingWindows)
@@ -81,7 +85,7 @@ struct FloatingWindowsView: View {
             }
         }
         initializationDispatch = dispatch
-        DispatchQueue.main.async(execute: dispatch)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: dispatch)
     }
 
     private func destroyFloatingWindows(from mainWindow: NSWindow? = nil) {

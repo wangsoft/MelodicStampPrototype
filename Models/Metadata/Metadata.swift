@@ -547,6 +547,18 @@ extension Metadata {
             throw .fileNotFound
         }
 
+        let access = SecurityScopedAccess(url: url)
+        let didStartAccess = access.startAccessing()
+        guard didStartAccess || access.isReachable() else {
+            await updateState(to: state.with(error: .readingPermissionNotGranted))
+            throw .readingPermissionNotGranted
+        }
+        defer {
+            if didStartAccess {
+                access.stopAccessing()
+            }
+        }
+
         guard let file = try? AudioFile(readingPropertiesAndMetadataFrom: url) else {
             await updateState(to: state.with(error: .readingPermissionNotGranted))
             throw .readingPermissionNotGranted
@@ -567,9 +579,8 @@ extension Metadata {
 
         await updateState(to: .fine)
         await apply()
-        completion?()
-
         await generateThumbnail()
+        completion?()
     }
 
     nonisolated func write(completion: (() -> ())? = nil) async throws(MetadataError) {
@@ -589,12 +600,12 @@ extension Metadata {
         }
 
         await updateState(to: .saving)
-        await apply()
 
         logger.info("Started writing metadata to \(self.url)")
 
         try await overwrite()
 
+        await apply()
         await updateState(to: .fine)
         completion?()
 
@@ -604,6 +615,18 @@ extension Metadata {
     // Overwrites the metadata file using only values from the `initial` fields
     private nonisolated func overwrite() async throws(MetadataError) {
         logger.info("Started overwriting initial metadata values to \(self.url)")
+
+        let access = SecurityScopedAccess(url: url)
+        let didStartAccess = access.startAccessing()
+        guard didStartAccess || access.isReachable() else {
+            await updateState(to: state.with(error: .readingPermissionNotGranted))
+            throw .readingPermissionNotGranted
+        }
+        defer {
+            if didStartAccess {
+                access.stopAccessing()
+            }
+        }
 
         guard let file = try? AudioFile(url: url) else {
             await updateState(to: state.with(error: .fileNotFound))
@@ -640,6 +663,9 @@ extension Metadata {
         var entry: MetadataBatchEditingEntry<V>?
         repeat {
             entry = self[extracting: keyPath]
+            if entry == nil {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
         } while entry == nil
 
         logger.info("Succeed polling metadata for \("\(keyPath)")")

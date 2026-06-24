@@ -60,6 +60,8 @@ struct PlayerView: View {
         .padding(.horizontal, 32)
         .padding(.vertical, 24)
         .frame(maxWidth: .infinity)
+        .playbackErrorAlert(for: player)
+        .outputDeviceErrorAlert(for: player)
     }
 
     // MARK: - Header
@@ -73,8 +75,7 @@ struct PlayerView: View {
 
             Button {
                 let hasShift = NSEvent.modifierFlags.contains(.shift)
-                playlist.playbackMode = playlist.playbackMode.cycle(
-                    negate: hasShift)
+                playlist.cyclePlaybackMode(negate: hasShift)
             } label: {
                 Image(systemSymbol: playlist.playbackMode.systemSymbol)
                     .font(.headline)
@@ -85,18 +86,22 @@ struct PlayerView: View {
                 id: PlayerNamespace.playbackModeButton, in: namespace!
             )
             .contextMenu {
-                PlaybackModePicker(selection: $playlist.playbackMode)
+                PlaybackModePicker(
+                    selection: Binding(
+                        get: { playlist.playbackMode },
+                        set: { playlist.setPlaybackMode($0) }
+                    )
+                )
             }
 
             // MARK: Playback Looping
 
             Button {
-                playlist.playbackLooping.toggle()
+                playlist.cyclePlaybackRepeatMode()
             } label: {
-                Image(systemSymbol: .repeat1)
+                PlaybackRepeatView(mode: playlist.playbackRepeatMode)
                     .font(.headline)
                     .frame(width: 20, height: 20)
-                    .aliveHighlight(playlist.playbackLooping)
             }
             .matchedGeometryEffect(
                 id: PlayerNamespace.playbackLoopingButton, in: namespace!

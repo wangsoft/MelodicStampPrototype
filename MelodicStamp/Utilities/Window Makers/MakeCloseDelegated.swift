@@ -7,54 +7,69 @@
 
 import SwiftUI
 
-struct MakeCloseDelegated: NSViewControllerRepresentable {
+struct MakeCloseDelegated: NSViewRepresentable {
     var shouldClose: Bool = false
     var onClose: (NSWindow, Bool) -> ()
 
-    func makeNSViewController(context: Context) -> NSViewController {
-        let hostingController = CloseDelegatedWindowHostingController(
-            rootView: EmptyView(),
-            parent: self
-        )
-        context.coordinator.hostingController = hostingController
-
-        return hostingController
+    func makeNSView(context: Context) -> CloseDelegatedWindowView {
+        let view = CloseDelegatedWindowView(delegate: context.coordinator.delegate)
+        context.coordinator.delegate.parent = self
+        return view
     }
 
-    func updateNSViewController(_: NSViewController, context: Context) {
-        context.coordinator.hostingController.delegate.parent = self
+    func updateNSView(_ nsView: CloseDelegatedWindowView, context: Context) {
+        context.coordinator.delegate.parent = self
+        nsView.applyDelegateIfPossible()
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator()
+        Coordinator(parent: self)
     }
 
     class Coordinator {
-        var hostingController: CloseDelegatedWindowHostingController<EmptyView>!
+        let delegate: CloseDelegatedWindowDelegate
+
+        init(parent: MakeCloseDelegated) {
+            self.delegate = .init(parent: parent)
+        }
     }
 }
 
-class CloseDelegatedWindowHostingController<Content: View>: NSHostingController<Content> {
-    var delegate: CloseDelegatedWindowDelegate
+final class CloseDelegatedWindowView: NSView {
+    let delegate: CloseDelegatedWindowDelegate
 
-    init(rootView: Content, parent: MakeCloseDelegated) {
-        self.delegate = .init(parent: parent)
-        super.init(rootView: rootView)
+    init(delegate: CloseDelegatedWindowDelegate) {
+        self.delegate = delegate
+        super.init(frame: .zero)
+
+        isHidden = true
+        translatesAutoresizingMaskIntoConstraints = false
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentHuggingPriority(.defaultLow, for: .vertical)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .vertical)
     }
 
-    @available(*, unavailable)
-    @MainActor @preconcurrency dynamic required init?(coder _: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
+    override var intrinsicContentSize: NSSize {
+        .zero
     }
 
-    override func viewWillLayout() {
-        super.viewWillLayout()
-
-        guard let window = view.window else { return }
+    func applyDelegateIfPossible() {
+        guard let window else { return }
         if !(window.delegate is CloseDelegatedWindowDelegate) {
             delegate.originalDelegate = window.delegate
             window.delegate = delegate
         }
+    }
+
+    @available(*, unavailable)
+    required init?(coder _: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        applyDelegateIfPossible()
     }
 }
 

@@ -1,5 +1,5 @@
 {
-  "originHash" : "c73d67c475e2875a6d1b55d33afb4d3da6e9bcd6422f230c6818fa2afd49fa0d",
+  "originHash" : "0e9349516f4243e14dffd1183ef4faa1cdfde567d01f71a832ebb0e1dd9d469a",
   "pins" : [
     {
       "identity" : "avfaudioextensions",
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/sindresorhus/Defaults",
       "state" : {
-        "branch" : "main",
-        "revision" : "3d98a76aab39eedf957274e98e15ebe6bb390b87"
+        "revision" : "5bfac4928f000fabdbef7e4ed0251399bb0841c9",
+        "version" : "9.0.8"
       }
     },
     {
@@ -231,8 +231,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/swiftlang/swift-syntax",
       "state" : {
-        "revision" : "0687f71944021d616d34d922343dcef086855920",
-        "version" : "600.0.1"
+        "revision" : "79e4b74a295b6eb74a8b585e3a39d29e70c1dbd1",
+        "version" : "603.0.2"
       }
     },
     {

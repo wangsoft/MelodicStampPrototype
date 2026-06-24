@@ -24,6 +24,7 @@ extension PlaylistIndexer {
                     guard let playlist = Playlist(loadingWith: element) else { continue }
                     continuation.yield((index, playlist))
                 }
+                continuation.finish()
             }
         }
     }

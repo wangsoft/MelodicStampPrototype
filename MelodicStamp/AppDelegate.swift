@@ -49,9 +49,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 extension AppDelegate {
     func applicationDidFinishLaunching(_: Notification) {
         NSWindow.allowsAutomaticWindowTabbing = false
+        clearPersistedWindowFrames()
     }
 
     func applicationWillTerminate(_: Notification) {}
+
+    func application(_: NSApplication, shouldSaveApplicationState _: NSCoder) -> Bool {
+        false
+    }
+
+    func application(_: NSApplication, shouldRestoreApplicationState _: NSCoder) -> Bool {
+        false
+    }
+
+    func applicationSupportsSecureRestorableState(_: NSApplication) -> Bool {
+        true
+    }
 
     func application(_: NSApplication, open urls: [URL]) {
         openWindow(id: WindowID.content(), value: CreationParameters(playlist: .referenced(urls)))
@@ -68,6 +81,12 @@ extension AppDelegate {
             // Allows each window to delegate its closing
             sender.windows.forEach { $0.performClose(nil) }
             return .terminateLater
+        }
+    }
+
+    private func clearPersistedWindowFrames() {
+        for key in UserDefaults.standard.dictionaryRepresentation().keys where key.hasPrefix("NSWindow Frame ") {
+            UserDefaults.standard.removeObject(forKey: key)
         }
     }
 }

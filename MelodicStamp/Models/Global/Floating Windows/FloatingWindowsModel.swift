@@ -37,6 +37,11 @@ import SwiftUI
     private var tabBarAdditionDispatch: DispatchWorkItem?
     private var playerAdditionDispatch: DispatchWorkItem?
 
+    private func setFrameIfNeeded(_ window: NSWindow, to frame: CGRect, animate: Bool) {
+        guard window.frame != frame else { return }
+        window.setFrame(frame, display: true, animate: animate)
+    }
+
     @MainActor func observe(_ window: NSWindow? = nil) {
         removeTabBar(from: targetWindow)
         removePlayer(from: targetWindow)
@@ -193,14 +198,15 @@ import SwiftUI
         let leadingX = windowFrame.origin.x - 16 - 48
         let bottomY = windowFrame.origin.y + (windowFrame.height - tabBarSize.height) / 2
 
-        tabBarWindow.setFrame(
+        setFrameIfNeeded(
+            tabBarWindow,
+            to:
             .init(
                 x: max(screenFrame.minX + 8, leadingX),
                 y: bottomY,
                 width: tabBarSize.width,
                 height: tabBarSize.height
             ),
-            display: true,
             animate: animate
         )
     }
@@ -222,14 +228,15 @@ import SwiftUI
         let centerX = windowFrame.origin.x + (windowFrame.width - idealWidth) / 2
         let bottomY = windowFrame.origin.y - 32
 
-        playerWindow.setFrame(
+        setFrameIfNeeded(
+            playerWindow,
+            to:
             .init(
                 x: centerX,
                 y: max(screenFrame.minY + 8, bottomY),
                 width: idealWidth,
                 height: playerSize.height
             ),
-            display: true,
             animate: animate
         )
     }

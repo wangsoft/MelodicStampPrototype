@@ -15,7 +15,8 @@ struct LyricsToolbar: ToolbarContent {
         ToolbarItem {
             LabeledTextEditor(
                 entries: metadataEditor[extracting: \.lyrics],
-                layout: .button, style: .code
+                layout: .button, style: .code,
+                networkLoader: loadLyricsFromNetwork
             ) {
                 Label("Edit Lyrics", systemSymbol: .pencilLine)
             } actions: {
@@ -32,5 +33,21 @@ struct LyricsToolbar: ToolbarContent {
             }
             .disabled(!metadataEditor.hasMetadata)
         }
+    }
+
+    private func loadLyricsFromNetwork() async throws -> String? {
+        guard let request = lyricsRequest() else { return nil }
+        return try await LRCLIBLyricsClient().fetchLyrics(for: request)
+    }
+
+    @MainActor private func lyricsRequest() -> LRCLIBLyricsClient.Request? {
+        guard let metadata = metadataEditor.metadataSet.first else { return nil }
+
+        return .init(
+            trackName: metadata.title.current ?? metadata.url.deletingPathExtension().lastPathComponent,
+            artistName: metadata.artist.current,
+            albumName: metadata.albumTitle.current,
+            duration: metadata.properties.duration
+        )
     }
 }

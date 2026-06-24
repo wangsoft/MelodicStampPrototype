@@ -89,6 +89,11 @@ extension Player {
 
 protocol PlayerDelegate {
     func playerDidFinishPlaying(_ player: some Player)
+    func player(_ player: some Player, encounteredError error: Error)
+}
+
+extension PlayerDelegate {
+    func player(_: some Player, encounteredError _: Error) {}
 }
 
 // - Blank Implementations

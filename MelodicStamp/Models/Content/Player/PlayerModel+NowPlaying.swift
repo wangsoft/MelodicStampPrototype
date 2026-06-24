@@ -45,7 +45,8 @@ extension PlayerModel {
         let commandCenter = MPRemoteCommandCenter.shared()
 
         // Play
-        commandCenter.playCommand.addTarget { [unowned self] _ in
+        commandCenter.playCommand.addTarget { [weak self] _ in
+            guard let self else { return .noActionableNowPlayingItem }
             guard isCurrentTrackPlayable else { return .noActionableNowPlayingItem }
 
             if isPlaying {
@@ -57,7 +58,8 @@ extension PlayerModel {
         }
 
         // Pause
-        commandCenter.pauseCommand.addTarget { [unowned self] _ in
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .noActionableNowPlayingItem }
             guard isCurrentTrackPlayable else { return .noActionableNowPlayingItem }
 
             if !isPlaying {
@@ -69,7 +71,8 @@ extension PlayerModel {
         }
 
         // Toggle play pause
-        commandCenter.togglePlayPauseCommand.addTarget { [unowned self] _ in
+        commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
+            guard let self else { return .noActionableNowPlayingItem }
             guard isCurrentTrackPlayable else { return .noActionableNowPlayingItem }
 
             togglePlayPause()
@@ -78,7 +81,8 @@ extension PlayerModel {
 
         // Skip forward
         commandCenter.skipForwardCommand.preferredIntervals = [1.0, 5.0, 15.0]
-        commandCenter.skipForwardCommand.addTarget { [unowned self] event in
+        commandCenter.skipForwardCommand.addTarget { [weak self] event in
+            guard let self else { return .noActionableNowPlayingItem }
             guard isCurrentTrackPlayable else { return .noActionableNowPlayingItem }
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
@@ -88,7 +92,8 @@ extension PlayerModel {
 
         // Skip backward
         commandCenter.skipBackwardCommand.preferredIntervals = [1.0, 5.0, 15.0]
-        commandCenter.skipBackwardCommand.addTarget { [unowned self] event in
+        commandCenter.skipBackwardCommand.addTarget { [weak self] event in
+            guard let self else { return .noActionableNowPlayingItem }
             guard isCurrentTrackPlayable else { return .noActionableNowPlayingItem }
             guard let event = event as? MPSkipIntervalCommandEvent else { return .commandFailed }
 
@@ -97,7 +102,8 @@ extension PlayerModel {
         }
 
         // Seek
-        commandCenter.changePlaybackPositionCommand.addTarget { [unowned self] event in
+        commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self else { return .noActionableNowPlayingItem }
             guard isCurrentTrackPlayable else { return .noActionableNowPlayingItem }
             guard let event = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
 
@@ -106,7 +112,8 @@ extension PlayerModel {
         }
 
         // Next track
-        commandCenter.nextTrackCommand.addTarget { [unowned self] _ in
+        commandCenter.nextTrackCommand.addTarget { [weak self] _ in
+            guard let self else { return .noSuchContent }
             guard hasNextTrack else { return .noSuchContent }
 
             playNextTrack()
@@ -114,7 +121,8 @@ extension PlayerModel {
         }
 
         // Previous track
-        commandCenter.previousTrackCommand.addTarget { [unowned self] _ in
+        commandCenter.previousTrackCommand.addTarget { [weak self] _ in
+            guard let self else { return .noSuchContent }
             guard hasPreviousTrack else { return .noSuchContent }
 
             playPreviousTrack()
